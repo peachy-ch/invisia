@@ -2,11 +2,13 @@
 
 This is an **unofficial Home Assistant integration** for the Invisia EV charging platform.
 
-It connects Home Assistant directly to the Invisia web backend, exposes charging and RFID data,
-and allows switching between **Optimized** and **Instant** charging modes.
+It connects Home Assistant to the Invisia web backend, exposes charging and RFID data,
+and allows switching between **Optimised** and **Immediate** charging modes.
 
-This integration is based on **observed and tested behaviour of the Invisia web application**
+This integration is based on **observed behaviour of the Invisia web application**
 (`https://app.invisia.ch`). Invisia does **not** publish official API documentation.
+
+⚠️ **All identifiers, IDs, emails, and examples in this document are fictitious.**
 
 ---
 
@@ -14,7 +16,7 @@ This integration is based on **observed and tested behaviour of the Invisia web 
 
 - Authenticates against Invisia cloud backend
 - Reads:
-  - RFID charging profile (`optimized` / `instant`)
+  - RFID charging profile (`optimised` / `instant`)
   - Current charging power (W)
   - Energy charged (kWh)
   - Charging station state (`noCar`, charging, etc.)
@@ -22,8 +24,8 @@ This integration is based on **observed and tested behaviour of the Invisia web 
 - Exposes:
   - Sensors (power, energy, profile, status)
   - Binary sensor: **car plugged in**
-  - Switch: **optimized charging**
-- Fully dashboard-compatible (Nest / tablet friendly)
+  - Switch: **optimised charging**
+- Designed for dashboards and wall displays (Google Nest / tablet friendly)
 
 ---
 
@@ -35,28 +37,17 @@ All data is fetched from the Invisia web application backend:
 https://app.invisia.ch
 ```
 
-The integration uses the **same API endpoints as the official web UI**.
-Authentication and requests behave like a browser session.
-
 ---
 
 ## Installation
 
-### Manual Installation
-
-1. Copy the `invisia` folder into:
+Copy the `invisia` folder into:
 
 ```
 /config/custom_components/invisia
 ```
 
-2. Restart Home Assistant.
-
-3. Go to:
-
-```
-Settings → Devices & Services → Add Integration → Invisia
-```
+Restart Home Assistant and add the integration via the UI.
 
 ---
 
@@ -65,7 +56,7 @@ Settings → Devices & Services → Add Integration → Invisia
 ### Required Fields
 
 | Field | Description |
-|-----|------------|
+|------|------------|
 | Email | Invisia account email |
 | Password | Invisia account password |
 | Facility ID | Invisia installation ID |
@@ -74,39 +65,34 @@ Settings → Devices & Services → Add Integration → Invisia
 ### Optional (Recommended)
 
 | Field | Description |
-|-----|------------|
+|------|------------|
 | user_id | Invisia user ID |
 | charging_station_id | Charging station ID (required for plug detection) |
 
 ---
 
-## How to Find Configuration Values on invisia.ch
+## Locating Configuration Values on invisia.ch
 
-### 1. Log in to Invisia
+1. Log in at:
 
 ```
 https://app.invisia.ch
 ```
 
-### 2. Open Developer Tools
+2. Open browser developer tools:
+   - Network tab
+   - Enable *Preserve log*
+   - Filter by **Fetch / XHR**
 
-- Chrome / Brave / Edge:
-  - Right click → Inspect
-  - Open **Network**
-  - Enable **Preserve log**
-  - Filter: **Fetch / XHR**
+### Facility ID
 
----
-
-### Facility ID (installation_id)
-
-Look for requests like:
+Look for requests such as:
 
 ```
-/api/cockpit/installations/272/...
+/api/cockpit/installations/1234/...
 ```
 
-➡️ `272` is the Facility ID.
+➡️ `1234` is the **Facility ID**.
 
 ---
 
@@ -115,48 +101,48 @@ Look for requests like:
 Look for:
 
 ```
-/api/cockpit/installations/272/rfids/2476
+/api/cockpit/installations/1234/rfids/5678
 ```
 
-➡️ `2476` is the RFID ID.
+➡️ `5678` is the **RFID ID**.
 
 ---
 
 ### User ID (optional)
 
-In the same response:
+In the same responses you may see:
 
 ```json
 "user": {
-  "id": 1543,
+  "id": 42,
   "email": "user@example.com"
 }
 ```
 
-➡️ `1543` is the user_id.
+➡️ `42` is the **user_id**.
 
 ---
 
 ### Charging Station ID (important)
 
-Look for:
+Look for requests like:
 
 ```
-/api/cockpit/installations/272/charging_stations/21401417
+/api/cockpit/installations/1234/charging_stations/90001
 ```
 
 or payloads containing:
 
 ```json
 "charging_station": {
-  "id": 21401417,
+  "id": 90001,
   "device_id": 7
 }
 ```
 
 ➡️ Use **`id`**, not `device_id`.
 
-Without this value, the integration cannot detect whether a car is plugged in.
+Without this value, the integration cannot determine whether a car is plugged in.
 
 ---
 
@@ -175,141 +161,66 @@ Without this value, the integration cannot detect whether a car is plugged in.
 
 ### Switches
 
-- `switch.invisia_optimized_charging`
-  - **ON** → Optimized charging
-  - **OFF** → Instant charging
+- `switch.invisia_optimised_charging`
+  - **ON** → Optimised charging
+  - **OFF** → Immediate charging
 
 ---
 
 ## Charging Logic
 
 - **Plugged in**
-  - Derived from charging station status:
-    ```
-    charging_status != "noCar"
-    ```
+  ```
+  charging_status != "noCar"
+  ```
 
 - **Charging**
-  - Derived from measured power:
-    ```
-    current_power_flow > ~50 W
-    ```
+  ```
+  current_power_flow > ~50 W
+  ```
 
-This reflects the **actual EVSE state**, independent of vehicle APIs.
+The logic reflects the **actual EVSE state**, not the vehicle API.
 
 ---
 
 ## Observed API (Unofficial)
 
 ### Base URL
-
 ```
 https://app.invisia.ch
 ```
 
----
-
-### Authentication
-
-#### Login
-
+### Login
 ```
 POST /api/authentication/token/
 ```
 
-Body:
-```json
-{
-  "email": "user@example.com",
-  "password": "password"
-}
-```
-
-Headers:
-```
-X-Installation-Id: <facility_id>
-```
-
-Response:
-```json
-{
-  "access": "<JWT access token>"
-}
-```
-
----
-
-#### Token Refresh
-
-```
-POST /api/authentication/token/refresh/
-```
-
-Uses HttpOnly cookies set during login.
-
----
-
 ### RFID Status
-
 ```
 GET /api/cockpit/installations/{installation_id}/rfids/{rfid_id}
 ```
 
-Payload may be returned either directly or wrapped:
-
-```json
-{
-  "rfid": { ... },
-  "stats": { ... }
-}
-```
-
-Clients must normalize both forms.
-
----
-
-### Set RFID Charging Profile
-
+### Update RFID Profile
 ```
 PATCH /api/cockpit/installations/{installation_id}/rfids/{rfid_id}
 ```
 
-Body:
-```json
-{
-  "id": 2476,
-  "profile": "optimized"
-}
-```
-
-Values:
-- `optimized`
-- `instant`
-
----
-
 ### Charging Station Detail
-
 ```
 GET /api/cockpit/installations/{installation_id}/charging_stations/{charging_station_id}
 ```
-
-Used to determine:
-- Plugged-in state
-- Charging mode
-- EVSE limits
 
 ---
 
 ## Notes & Warnings
 
-- This integration is **cloud-based**
-- API behaviour may change without notice
-- Use at your own risk
+- Cloud-based integration
+- No official API support
+- API may change without notice
 - Not affiliated with or endorsed by Invisia
 
 ---
 
 ## License
 
-MIT (suggested)
+MIT
