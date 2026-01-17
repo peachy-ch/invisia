@@ -1,0 +1,18 @@
+{
+  "config": {
+    "error": {
+      "auth_failed": "Login failed"
+    },
+    "step": {
+      "user": {
+        "title": "Invisia",
+        "data": {
+          "email": "Email",
+          "password": "Password",
+          "installation_id": "Facility ID",
+          "rfid_id": "RFID ID"
+        }
+      }
+    }
+  }
+}

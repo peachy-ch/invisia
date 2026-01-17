@@ -1,0 +1,10 @@
+{
+  "domain": "invisia",
+  "name": "Invisia",
+  "version": "1.0.0",
+  "documentation": "https://app.invisia.ch",
+  "requirements": [],
+  "codeowners": [],
+  "config_flow": true,
+  "iot_class": "cloud_polling"
+}
