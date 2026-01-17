@@ -41,13 +41,37 @@ https://app.invisia.ch
 
 ## Installation
 
-Copy the `invisia` folder into:
+You can install this integration either via **HACS** (recommended) or manually.
+
+### HACS Installation (Custom Repository)
+
+This integration is not part of the default HACS store. Install it as a **custom repository**:
+
+1. Ensure HACS is installed in Home Assistant.
+2. In Home Assistant:
+   - Go to **HACS**
+   - Open **Integrations**
+   - Click the **⋮** menu (top right) → **Custom repositories**
+3. Add the repository URL (your GitHub repo URL) and choose **Category: Integration**
+4. Click **Add**
+5. Back in **HACS → Integrations**, find the new entry and click **Download**
+6. Restart Home Assistant
+
+After restart, add the integration:
+- **Settings → Devices & Services → Add Integration → Invisia**
+
+### Manual Installation
+
+1. Copy the integration folder into:
 
 ```
 /config/custom_components/invisia
 ```
 
-Restart Home Assistant and add the integration via the UI.
+2. Restart Home Assistant.
+
+3. Add it via:
+- **Settings → Devices & Services → Add Integration → Invisia**
 
 ---
 
@@ -193,6 +217,11 @@ https://app.invisia.ch
 ### Login
 ```
 POST /api/authentication/token/
+```
+
+### Token Refresh
+```
+POST /api/authentication/token/refresh/
 ```
 
 ### RFID Status
