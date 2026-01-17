@@ -8,7 +8,7 @@ and allows switching between **Optimised** and **Immediate** charging modes.
 This integration is based on **observed behaviour of the Invisia web application**
 (`https://app.invisia.ch`). Invisia does **not** publish official API documentation.
 
-⚠️ **All identifiers, IDs, emails, and examples in this document are fictitious.**
+⚠️ **All identifiers, IDs, emails, and examples in this document are just examples.**
 
 ---
 
