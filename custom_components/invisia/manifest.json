@@ -2,9 +2,10 @@
   "domain": "invisia",
   "name": "Invisia",
   "version": "1.0.0",
-  "documentation": "https://app.invisia.ch",
-  "requirements": [],
-  "codeowners": [],
+  "documentation": "https://github.com/peachy-ch/invisia",
+  "issue_tracker": "https://github.com/peachy-ch/invisia/issues",
+  "codeowners": ["@peachy-ch"],
   "config_flow": true,
+  "requirements": [],
   "iot_class": "cloud_polling"
 }
