@@ -52,7 +52,10 @@ This integration is not part of the default HACS store. Install it as a **custom
    - Go to **HACS**
    - Open **Integrations**
    - Click the **⋮** menu (top right) → **Custom repositories**
-3. Add the repository URL (your GitHub repo URL) and choose **Category: Integration**
+3. Add the repository URL (https://github.com/peachy-ch/invisia) and choose **Category: Integration**
+  ...
+   https://github.com/peachy-ch/invisia
+   ...
 4. Click **Add**
 5. Back in **HACS → Integrations**, find the new entry and click **Download**
 6. Restart Home Assistant
