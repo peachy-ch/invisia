@@ -1,0 +1,6 @@
+{
+  "name": "Invisia",
+  "content_in_root": false,
+  "domains": ["invisia"],
+  "homeassistant": "2024.6.0"
+}
