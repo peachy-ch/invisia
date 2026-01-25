@@ -24,8 +24,9 @@ class InvisiaChargingModeSelect(CoordinatorEntity[InvisiaCoordinator], SelectEnt
 
     def __init__(self, coordinator: InvisiaCoordinator, entry_id: str) -> None:
         super().__init__(coordinator)
-        self._attr_suggested_object_id = "invisia_charging_mode"
-        self._attr_unique_id = f"invisia_{entry.entry_id}_charging_mode"
+        self._attr_unique_id = f"{entry_id}_charging_mode"
+        # Keep entity_ids sane (avoid 'select.charging_mode', etc.)
+        self._attr_suggested_object_id = f"invisia_{coordinator.rfid_id}_charging_mode"
 
     @property
     def current_option(self) -> str | None:

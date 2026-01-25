@@ -33,6 +33,7 @@ class InvisiaCarPluggedIn(CoordinatorEntity, BinarySensorEntity):
 
         self._attr_name = "Car plugged in"
         self._attr_unique_id = f"invisia_{self._installation_id}_cs_{self._cs_id}_plugged_in"
+        self._attr_suggested_object_id = f"{DOMAIN}_charging_station_{coordinator.charging_station_id}_car_plugged_in"
 
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{self._installation_id}_cs_{self._cs_id}")},
@@ -43,15 +44,16 @@ class InvisiaCarPluggedIn(CoordinatorEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool:
-        detail = (self.coordinator.data or {}).get("charging_station_detail") or {}
-        status = detail.get("status") or {}
-        cs = status.get("charging_status")
+        # Prefer RFID status (it actually reports carPluggedIn/charging), because
+        # charging-station endpoints often return nulls for this field.
+        cs = (self.coordinator.data or {}).get('status', {}).get('charging_status')
+        if isinstance(cs, str) and cs:
+            cs_l = cs.lower()
+            return cs_l in ('carpluggedin', 'charging')
 
-        # confirmed state: "noCar" => no vehicle present
-        if cs in (None, "unknown", "unavailable"):
-            return False
-        return cs != "noCar"
-
+        # Fallback to charging-station detail if present
+        st = (self.coordinator.data or {}).get('charging_station_detail', {}).get('status', {})
+        return bool(st) and bool(st.get('car_plugged_in'))
     @property
     def extra_state_attributes(self):
         detail = (self.coordinator.data or {}).get("charging_station_detail") or {}

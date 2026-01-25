@@ -73,8 +73,8 @@ class InvisiaSensor(CoordinatorEntity[InvisiaCoordinator], SensorEntity):
     def __init__(self, coordinator: InvisiaCoordinator, entry_id: str, description: InvisiaSensorDescription) -> None:
         super().__init__(coordinator)
         self.entity_description = description
-        self._attr_suggested_object_id = f"invisia_{description.key}"
-        self._attr_unique_id = f"invisia_{entry.entry_id}_{description.key}"
+        self._attr_unique_id = f"{DOMAIN}_{coordinator.installation_id}_{coordinator.rfid_id}_{description.key}"
+        self._attr_suggested_object_id = f"{DOMAIN}_rfid_{coordinator.rfid_id}_{description.key}"
         self._attr_has_entity_name = True
 
     @property

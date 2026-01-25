@@ -22,6 +22,45 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+from homeassistant.helpers import entity_registry as er
+
+def _legacy_entity_map(rfid_id: str) -> dict[str, str]:
+    """Map legacy entity_ids to new prefixed entity_ids."""
+    base = f"invisia_{rfid_id}"
+    return {
+        # legacy (no prefix) -> new (prefixed)
+        "sensor.status": f"sensor.{base}_status",
+        "sensor.charging_power": f"sensor.{base}_charging_power",
+        "sensor.energy_charged": f"sensor.{base}_energy_charged",
+        "sensor.rfid_profile": f"sensor.{base}_rfid_profile",
+        "select.charging_mode": f"select.{base}_charging_mode",
+    }
+
+async def _migrate_legacy_entity_ids(hass: HomeAssistant, rfid_id: str) -> None:
+    """Rename (or remove) old entity ids to the new scheme.
+
+    Safe behaviour:
+    - If the new entity_id already exists, remove the old one (prevents duplicates).
+    - If rename collides, also remove the old one.
+    """
+    reg = er.async_get(hass)
+    for old, new in _legacy_entity_map(rfid_id).items():
+        old_entry = reg.async_get(old)
+        if old_entry is None:
+            continue
+
+        # If new already exists, drop the legacy entity to avoid duplicates.
+        if reg.async_get(new) is not None:
+            reg.async_remove(old)
+            continue
+
+        try:
+            reg.async_update_entity(old, new_entity_id=new)
+        except ValueError:
+            # Collision or invalid rename: best effort remove legacy to stop setup failing.
+            if reg.async_get(new) is not None:
+                reg.async_remove(old)
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     session = async_get_clientsession(hass)
 
@@ -46,6 +85,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "coordinator": coordinator,
         "entry": entry,
     }
+
+    # Best-effort: migrate legacy entity IDs (pre-prefix) to the new scheme.
+    await _migrate_legacy_entity_ids(hass, str(ids.rfid_id))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
