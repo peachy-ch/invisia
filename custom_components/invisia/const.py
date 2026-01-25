@@ -10,4 +10,4 @@ CONF_CHARGING_STATION_ID = "charging_station_id"
 BASE_URL = "https://app.invisia.ch"
 SCAN_INTERVAL = 30  # seconds
 
-PLATFORMS = ["sensor", "switch", "binary_sensor"]
+PLATFORMS = ["sensor", "select"]

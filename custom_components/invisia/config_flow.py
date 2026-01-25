@@ -1,9 +1,10 @@
+from __future__ import annotations
+
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.data_entry_flow import FlowResult
 
-from .api import InvisiaAPI
 from .const import (
     DOMAIN,
     CONF_EMAIL,
@@ -14,38 +15,28 @@ from .const import (
     CONF_CHARGING_STATION_ID,
 )
 
+STEP_USER_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_EMAIL): str,
+        vol.Required(CONF_PASSWORD): str,
+        vol.Required(CONF_INSTALLATION_ID): vol.Coerce(int),
+        vol.Required(CONF_RFID_ID): vol.Coerce(int),
+        vol.Optional(CONF_CHARGING_STATION_ID): vol.Coerce(int),
+        vol.Optional(CONF_USER_ID): vol.Coerce(int),
+    }
+)
+
 
 class InvisiaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    VERSION = 1
+    VERSION = 2
 
-    async def async_step_user(self, user_input=None):
-        errors = {}
+    async def async_step_user(self, user_input=None) -> FlowResult:
+        if user_input is None:
+            return self.async_show_form(step_id="user", data_schema=STEP_USER_DATA_SCHEMA)
 
-        if user_input is not None:
-            session = async_get_clientsession(self.hass)
-            api = InvisiaAPI(
-                user_input[CONF_EMAIL],
-                user_input[CONF_PASSWORD],
-                user_input[CONF_INSTALLATION_ID],
-                session,
-            )
+        unique = f"{user_input[CONF_INSTALLATION_ID]}_{user_input[CONF_RFID_ID]}"
+        await self.async_set_unique_id(unique)
+        self._abort_if_unique_id_configured()
 
-            try:
-                await api.login()
-                return self.async_create_entry(title="Invisia", data=user_input)
-            except Exception:
-                errors["base"] = "auth_failed"
-
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_EMAIL): str,
-                vol.Required(CONF_PASSWORD): str,
-                vol.Required(CONF_INSTALLATION_ID): str,
-                vol.Required(CONF_RFID_ID): str,
-                # Optional but useful for “full web app” coverage:
-                vol.Optional(CONF_USER_ID): str,
-                vol.Optional(CONF_CHARGING_STATION_ID): str,
-            }
-        )
-
-        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+        title = f"Invisia RFID {user_input[CONF_RFID_ID]}"
+        return self.async_create_entry(title=title, data=user_input)

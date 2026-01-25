@@ -1,55 +1,133 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import timedelta
 import logging
-from datetime import timedelta, date
+import time
+from typing import Any
 
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, SCAN_INTERVAL
+from .api import InvisiaAPI
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class InvisiaCoordinator(DataUpdateCoordinator):
-    def __init__(self, hass, api, rfid_id: str, user_id: str | None, charging_station_id: str | None):
+@dataclass(frozen=True)
+class InvisiaIds:
+    rfid_id: str
+    user_id: str | None = None
+    charging_station_id: str | None = None
+
+
+class InvisiaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    def __init__(self, hass: HomeAssistant, api: InvisiaAPI, ids: InvisiaIds) -> None:
         super().__init__(
             hass,
             _LOGGER,
-            name=f"{DOMAIN}_{rfid_id}",
-            update_interval=timedelta(seconds=SCAN_INTERVAL),
+            name=f"{DOMAIN} RFID {ids.rfid_id}",
+            update_interval=timedelta(seconds=30),
         )
         self.api = api
-        self.rfid_id = str(rfid_id)
-        self.user_id = str(user_id) if user_id else None
-        self.charging_station_id = str(charging_station_id) if charging_station_id else None
+        self.ids = ids
 
-    async def _async_update_data(self):
+    async def _async_update_data(self) -> dict[str, Any]:
+        t0 = time.perf_counter()
+
+        # Always return a dict, even on partial failure (HA hates None)
+        data: dict[str, Any] = {
+            "rfid": None,
+            "status": None,
+            "stats": {},
+            "timers": [],
+            "journal": [],
+            "charging_station_detail": None,
+            "charging_station_stats": None,
+            "meta": {"ts": dt_util.utcnow().isoformat()},
+        }
+
         try:
-            data = {}
+            # This is the only call you *actually* need to keep the integration useful.
+            rfid_payload = await self.api.get_rfid(self.ids.rfid_id)
 
-            # Always: RFID status/config
-            data["rfid_status"] = await self.api.get_rfid(self.rfid_id)
+            # The API returns a big dict that contains rfid/status/stats/etc.
+            if isinstance(rfid_payload, dict):
+                data["rfid"] = rfid_payload.get("rfid")
+                data["status"] = rfid_payload.get("status")
+                # Sometimes stats are already embedded here, sometimes not
+                data["stats"] = rfid_payload.get("stats") or {}
+            else:
+                data["rfid"] = rfid_payload
 
-            # Timers bound to RFID
-            data["timers"] = await self.api.get_rfid_timers(self.rfid_id)
+            # Optional: station detail/stats
+            if self.ids.charging_station_id:
+                try:
+                    cs_detail = await self.api.get_charging_station_detail(self.ids.charging_station_id)
+                    if isinstance(cs_detail, dict) and cs_detail.get("_non_json"):
+                        _LOGGER.debug("Charging station detail returned non-JSON (status=%s)", cs_detail.get("status"))
+                    else:
+                        data["charging_station_detail"] = cs_detail
+                except Exception:
+                    _LOGGER.debug("Charging station detail fetch failed", exc_info=True)
 
-            # Journal: web app used a rolling window; we’ll do last 30 days
-            end = date.today().isoformat()
-            start = (date.today().replace(day=1)).isoformat()  # cheap + stable; not perfect, but fine
-            data["journal"] = await self.api.get_rfid_journal(self.rfid_id, start=start, end=end)
+            try:
+                cs_stats = await self.api.get_charging_station_stats()
+                if isinstance(cs_stats, dict) and cs_stats.get("_non_json"):
+                    _LOGGER.debug("Charging station stats returned non-JSON (status=%s)", cs_stats.get("status"))
+                else:
+                    data["charging_station_stats"] = cs_stats
+            except Exception:
+                _LOGGER.debug("Charging station stats fetch failed", exc_info=True)
 
-            # Optional: user + permissions
-            if self.user_id:
-                data["permissions"] = await self.api.get_permissions(self.user_id)
-                data["user"] = await self.api.get_user(self.user_id)
-                data["user_installation"] = await self.api.get_user_installation(self.user_id)
+            # Optional: timers and journal (hard-capped)
+            try:
+                timers = await self.api.get_rfid_timers(self.ids.rfid_id)
+                if isinstance(timers, dict) and timers.get("_non_json"):
+                    _LOGGER.debug("Timers returned non-JSON (status=%s)", timers.get("status"))
+                elif isinstance(timers, list):
+                    data["timers"] = timers[:5]
+            except Exception:
+                _LOGGER.debug("Timers fetch failed", exc_info=True)
 
-            # Optional: charging station info
-            data["charging_station_stats"] = await self.api.get_charging_station_stats()
-            if self.charging_station_id:
-                data["charging_station_detail"] = await self.api.get_charging_station_detail(self.charging_station_id)
+            try:
+                start = (dt_util.utcnow() - timedelta(days=7)).isoformat()
+                end = dt_util.utcnow().isoformat()
+                journal = await self.api.get_rfid_journal(self.ids.rfid_id, start=start, end=end)
+                if isinstance(journal, dict) and journal.get("_non_json"):
+                    _LOGGER.debug("Journal returned non-JSON (status=%s)", journal.get("status"))
+                elif isinstance(journal, list):
+                    data["journal"] = journal[:10]
+            except Exception:
+                _LOGGER.debug("Journal fetch failed", exc_info=True)
 
-            return data
+            # Optional: stats endpoint (known to HTML-500). Never fatal.
+            try:
+                start = (dt_util.utcnow() - timedelta(hours=24)).isoformat()
+                end = dt_util.utcnow().isoformat()
+                stats = await self.api.get_rfid_stats(self.ids.rfid_id, start=start, end=end, granularity="total")
+                if isinstance(stats, dict) and stats.get("_non_json"):
+                    _LOGGER.warning(
+                        "Invisia stats returned non-JSON (status=%s). Ignoring.",
+                        stats.get("status"),
+                    )
+                elif isinstance(stats, dict):
+                    # API can return {"stats": {...}} or just {...}
+                    data["stats"] = stats.get("stats") if "stats" in stats else stats
+            except Exception:
+                _LOGGER.warning("Invisia stats fetch failed (ignored)", exc_info=True)
 
-        except Exception as err:
-            raise UpdateFailed(err) from err
+        except Exception:
+            # Keep last partial data so entities don't go unavailable every refresh
+            _LOGGER.exception("Unexpected error fetching invisia RFID %s data", self.ids.rfid_id)
+
+        dt = time.perf_counter() - t0
+        _LOGGER.debug(
+            "Finished fetching invisia RFID %s data in %.3f seconds (rfid_present=%s)",
+            self.ids.rfid_id,
+            dt,
+            bool(data.get("rfid")),
+        )
+        return data

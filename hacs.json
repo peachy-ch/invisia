@@ -1,6 +1,8 @@
 {
   "name": "Invisia",
   "content_in_root": false,
-  "domains": ["invisia"],
-  "homeassistant": "2024.6.0"
+  "domains": ["sensor", "select", "binary_sensor"],
+  "iot_class": "cloud_polling",
+  "homeassistant": "2024.6.0",
+  "render_readme": true
 }
