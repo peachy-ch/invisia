@@ -22,62 +22,24 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-from homeassistant.helpers import entity_registry as er
-
-def _legacy_entity_map(rfid_id: str) -> dict[str, str]:
-    """Map legacy entity_ids to new prefixed entity_ids."""
-    base = f"invisia_{rfid_id}"
-    return {
-        # legacy (no prefix) -> new (prefixed)
-        "sensor.status": f"sensor.{base}_status",
-        "sensor.charging_power": f"sensor.{base}_charging_power",
-        "sensor.energy_charged": f"sensor.{base}_energy_charged",
-        "sensor.rfid_profile": f"sensor.{base}_rfid_profile",
-        "select.charging_mode": f"select.{base}_charging_mode",
-    }
-
-async def _migrate_legacy_entity_ids(hass: HomeAssistant, rfid_id: str) -> None:
-    """Rename (or remove) old entity ids to the new scheme.
-
-    Safe behaviour:
-    - If the new entity_id already exists, remove the old one (prevents duplicates).
-    - If rename collides, also remove the old one.
-    """
-    reg = er.async_get(hass)
-    for old, new in _legacy_entity_map(rfid_id).items():
-        old_entry = reg.async_get(old)
-        if old_entry is None:
-            continue
-
-        # If new already exists, drop the legacy entity to avoid duplicates.
-        if reg.async_get(new) is not None:
-            reg.async_remove(old)
-            continue
-
-        try:
-            reg.async_update_entity(old, new_entity_id=new)
-        except ValueError:
-            # Collision or invalid rename: best effort remove legacy to stop setup failing.
-            if reg.async_get(new) is not None:
-                reg.async_remove(old)
-
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     session = async_get_clientsession(hass)
 
     api = InvisiaAPI(
-        entry.data[CONF_EMAIL],
-        entry.data[CONF_PASSWORD],
-        str(entry.data[CONF_INSTALLATION_ID]),
-        session,
+        email=entry.data[CONF_EMAIL],
+        password=entry.data[CONF_PASSWORD],
+        installation_id=int(entry.data[CONF_INSTALLATION_ID]),
+        session=session,
     )
 
     ids = InvisiaIds(
-        rfid_id=str(entry.data[CONF_RFID_ID]),
-        user_id=str(entry.data.get(CONF_USER_ID)) if entry.data.get(CONF_USER_ID) else None,
-        charging_station_id=str(entry.data.get(CONF_CHARGING_STATION_ID)) if entry.data.get(CONF_CHARGING_STATION_ID) else None,
+        installation_id=int(entry.data[CONF_INSTALLATION_ID]),
+        rfid_id=int(entry.data[CONF_RFID_ID]),
+        user_id=int(entry.data[CONF_USER_ID]) if entry.data.get(CONF_USER_ID) else None,
+        charging_station_id=int(entry.data[CONF_CHARGING_STATION_ID]) if entry.data.get(CONF_CHARGING_STATION_ID) else None,
     )
 
-    coordinator = InvisiaCoordinator(hass, api, ids)
+    coordinator = InvisiaCoordinator(hass=hass, api=api, ids=ids)
     await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
@@ -86,47 +48,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "entry": entry,
     }
 
-    # Best-effort: migrate legacy entity IDs (pre-prefix) to the new scheme.
-    await _migrate_legacy_entity_ids(hass, str(ids.rfid_id))
-
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
+    if unload_ok:
+        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     return unload_ok
-
-
-async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """
-    HA calls *this* when it sees an older config entry version.
-    Without this, you get: "Migration handler not found".
-    """
-    _LOGGER.debug("Migrating Invisia entry %s from version %s", entry.title, entry.version)
-
-    data = dict(entry.data)
-
-    # Normalise numeric fields that may have been stored as strings
-    for k in (CONF_INSTALLATION_ID, CONF_RFID_ID, CONF_USER_ID, CONF_CHARGING_STATION_ID):
-        if k in data and data[k] not in (None, ""):
-            try:
-                data[k] = int(data[k])
-            except (TypeError, ValueError):
-                pass
-
-    # Ensure we have a stable unique_id so re-adds don't create zombies
-    installation_id = data.get(CONF_INSTALLATION_ID)
-    rfid_id = data.get(CONF_RFID_ID)
-    if installation_id and rfid_id and not entry.unique_id:
-        unique = f"{installation_id}_{rfid_id}"
-        hass.config_entries.async_update_entry(entry, unique_id=unique)
-
-    # Example migration steps if your schema changed:
-    # v1 -> v2: allow "disabled" charging mode etc. (no stored fields needed)
-    new_version = 2
-
-    hass.config_entries.async_update_entry(entry, data=data, version=new_version)
-    _LOGGER.info("Migration of %s successful to version %s", entry.title, new_version)
-    return True
