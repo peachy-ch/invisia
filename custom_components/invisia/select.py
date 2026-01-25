@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from homeassistant.components.select import SelectEntity
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -24,9 +25,15 @@ class InvisiaChargingModeSelect(CoordinatorEntity[InvisiaCoordinator], SelectEnt
 
     def __init__(self, coordinator: InvisiaCoordinator, entry_id: str) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{entry_id}_charging_mode"
+        self._attr_unique_id = f"{DOMAIN}_{coordinator.installation_id}_{coordinator.rfid_id}_charging_mode"
         # Keep entity_ids sane (avoid 'select.charging_mode', etc.)
         self._attr_suggested_object_id = f"invisia_{coordinator.rfid_id}_charging_mode"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{coordinator.installation_id}_rfid_{coordinator.rfid_id}")},
+            name=f"Invisia RFID {coordinator.rfid_id}",
+            manufacturer="Invisia",
+            model="RFID",
+        )
 
     @property
     def current_option(self) -> str | None:

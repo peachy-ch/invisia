@@ -9,6 +9,7 @@ from homeassistant.const import UnitOfEnergy, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import DOMAIN
 from .coordinator import InvisiaCoordinator
@@ -75,6 +76,12 @@ class InvisiaSensor(CoordinatorEntity[InvisiaCoordinator], SensorEntity):
         self.entity_description = description
         self._attr_unique_id = f"{DOMAIN}_{coordinator.installation_id}_{coordinator.rfid_id}_{description.key}"
         self._attr_suggested_object_id = f"{DOMAIN}_rfid_{coordinator.rfid_id}_{description.key}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{coordinator.installation_id}_rfid_{coordinator.rfid_id}")},
+            name=f"Invisia RFID {coordinator.rfid_id}",
+            manufacturer="Invisia",
+            model="RFID",
+        )
         self._attr_has_entity_name = True
 
     @property
