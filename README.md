@@ -1,4 +1,3 @@
-
 # Invisia Home Assistant Integration
 
 This Home Assistant custom integration provides first‑class support for **Invisia EV charging infrastructure**, with a focus on **RFID‑based charging**, **explicit entity modelling**, and **robust handling of backend edge cases**.
@@ -213,4 +212,105 @@ logger:
 ## Disclaimer
 
 This is an unofficial Home Assistant integration and is not affiliated with Invisia AG.
+---
 
+## Getting the IDs from the Invisia portal (installation / RFID / charging station)
+
+The portal UI does not consistently show the internal IDs you need for API calls, but they *are* visible in the browser's Network log.
+
+1. Log in to https://app.invisia.ch
+2. Open Developer Tools → **Network**
+3. Reload the page, then filter requests for: `statistics`, `rfid`, `charging`
+
+### Installation ID
+Look for a request like:
+
+`/api/statistics/<installation_id>/rfid/<rfid_id>?start=...&end=...`
+
+The number after `/api/statistics/` is the **installation ID**.
+
+### RFID ID
+Either:
+- it’s shown in the UI name (e.g. “Invisia RFID 2476”), or
+- it appears in URLs as `/rfid/<rfid_id>`.
+
+### Charging station ID (optional)
+If you want the **Car plugged in** binary sensor, find charging-station calls such as:
+- `/api/v2/installations/<installation_id>/charging-stations`
+- `/api/v2/charging-stations/<charging_station_id>`
+
+The station `id` is the **charging station ID**.
+
+---
+
+## Installation via HACS
+
+1. In Home Assistant, open **HACS → Integrations**
+2. Menu (⋮) → **Custom repositories**
+3. Add the repo: https://github.com/peachy-ch/invisia/ (Category: **Integration**)
+4. Install **Invisia** and restart Home Assistant
+5. Add the integration: **Settings → Devices & Services → Add integration → Invisia**
+6. Enter: email, password, installation ID, RFID ID (and optionally charging station ID)
+
+---
+
+## Entities
+
+The integration creates two devices when configured with both RFID and charging station IDs:
+
+### Invisia RFID <rfid_id>
+- **Select:** charging mode
+- **Sensors:** charging power (kW), energy charged (kWh), RFID profile, status
+- Attributes may include “energy sourced today” and recent journal entries (when available)
+
+### Invisia Charging Station <charging_station_id> (optional)
+- **Binary sensor:** car plugged in
+
+---
+
+## Example dashboard card (button-card)
+
+A minimal example that cycles charging mode on tap:
+
+```yaml
+tap_action:
+  action: call-service
+  service: select.select_option
+  service_data:
+    entity_id: select.invisia_rfid_2476_charging_mode
+    option: |
+      [[[
+        const cur = (states['select.invisia_rfid_2476_charging_mode']?.state || '').toLowerCase();
+        if (cur === 'instant') return 'optimized';
+        if (cur === 'optimized') return 'disabled';
+        return 'instant';
+      ]]]
+```
+
+---
+
+## Troubleshooting
+
+### Stats endpoint returns HTML / 500
+The Invisia statistics endpoint can sometimes return an HTML error page (500). The integration logs a warning and continues; core status/power should still update.
+
+### Old/orphaned entities
+If you previously had legacy entities (e.g. `sensor.rfid_power`) they can remain in the entity registry.
+
+Preferred cleanup:
+- **Settings → Devices & Services → Entities**, search for the old entity IDs, then delete/disable them.
+
+If the UI won’t let you (or they’re invisible):
+1. Stop Home Assistant
+2. Back up `.storage/`
+3. Remove the stale entries from `.storage/core.entity_registry`
+4. Start Home Assistant
+
+### Polling interval / rate limits
+The coordinator polls every 30 seconds by default. If your Invisia account is rate-limited to 1 request/minute, increase the interval (see `coordinator.py`).
+
+---
+
+## Disclaimer
+
+Unofficial integration. Invisia can change their portal API at any time.
