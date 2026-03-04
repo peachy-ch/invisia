@@ -11,7 +11,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.device_registry import DeviceInfo
 
-from .const import DOMAIN
+from .const import DOMAIN, ATTR_LIST_MAX_ITEMS
 from .coordinator import InvisiaCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -145,14 +145,14 @@ class InvisiaSensor(CoordinatorEntity[InvisiaCoordinator], SensorEntity):
         attrs["e_charged_kwh"] = cs_stats.get("e_charged") or stats.get("e_charged")
         attrs["e_sourced_today_kwh"] = cs_stats.get("e_sourced_today") or stats.get("e_sourced_today")
 
-        # Truncate journal and timers hard
+        # Truncate journal and timers to ATTR_LIST_MAX_ITEMS
         j = data.get("journal") or []
         if isinstance(j, list):
-            attrs["journal_recent"] = j[:5]
+            attrs["journal_recent"] = j[:ATTR_LIST_MAX_ITEMS]
 
         t = data.get("timers") or []
         if isinstance(t, list):
-            attrs["timers"] = t[:5]
+            attrs["timers"] = t[:ATTR_LIST_MAX_ITEMS]
 
         # Timestamp
         meta = data.get("meta") or {}

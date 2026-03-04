@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import async_timeout
 import logging
 from typing import Any
@@ -9,6 +10,8 @@ from aiohttp import ClientResponseError, ContentTypeError
 from .const import BASE_URL
 
 _LOGGER = logging.getLogger(__name__)
+
+_MAX_RETRIES = 3  # extra attempts after the first on 429 (4 total)
 
 
 class InvisiaAPI:
@@ -91,39 +94,59 @@ class InvisiaAPI:
             "X-Installation-Id": self._installation_id,
         }
 
-        async with async_timeout.timeout(20):
-            resp = await self._session.request(
-                method, url, headers=headers, params=params, json=json_body
-            )
-
-            try:
-                data = await resp.json()
-            except ContentTypeError:
-                # Invisia sometimes returns HTML error pages (yes, really).
-                text = await resp.text()
-                if allow_non_json:
-                    return {"_non_json": True, "status": resp.status, "text": text[:500]}
-                raise RuntimeError(
-                    f"Invisia API returned non-JSON for {method} {path}: {resp.status} {text[:200]}"
+        for attempt in range(_MAX_RETRIES + 1):
+            async with async_timeout.timeout(20):
+                resp = await self._session.request(
+                    method, url, headers=headers, params=params, json=json_body
                 )
 
-        # Token invalid -> refresh/login and retry once
-        if isinstance(data, dict) and data.get("code") == "token_not_valid":
-            await self.refresh()
-            return await self._request(
-                method,
-                path,
-                params=params,
-                json_body=json_body,
-                allow_non_json=allow_non_json,
-            )
+                try:
+                    data = await resp.json()
+                except ContentTypeError:
+                    # Invisia sometimes returns HTML error pages (yes, really).
+                    text = await resp.text()
+                    if allow_non_json:
+                        return {"_non_json": True, "status": resp.status, "text": text[:500]}
+                    raise RuntimeError(
+                        f"Invisia API returned non-JSON for {method} {path}: {resp.status} {text[:200]}"
+                    )
 
-        # Raise for non-2xx if we actually got JSON back with errors
-        if resp.status >= 400 and isinstance(data, dict):
-            # Keep it readable in logs.
-            raise RuntimeError(f"Invisia API error {resp.status} for {method} {path}: {data}")
+            # 429 – rate limited: back off and retry
+            if resp.status == 429:
+                if attempt < _MAX_RETRIES:
+                    delay = int(resp.headers.get("Retry-After", 2 ** attempt))
+                    _LOGGER.warning(
+                        "Invisia rate limited (429), backing off %ds (attempt %d/%d)",
+                        delay,
+                        attempt + 1,
+                        _MAX_RETRIES + 1,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                raise RuntimeError(
+                    f"Invisia API rate limited after {_MAX_RETRIES + 1} attempts for {method} {path}"
+                )
 
-        return data
+            # Token invalid -> refresh/login and retry once
+            if isinstance(data, dict) and data.get("code") == "token_not_valid":
+                await self.refresh()
+                return await self._request(
+                    method,
+                    path,
+                    params=params,
+                    json_body=json_body,
+                    allow_non_json=allow_non_json,
+                )
+
+            # Raise for non-2xx if we actually got JSON back with errors
+            if resp.status >= 400 and isinstance(data, dict):
+                # Keep it readable in logs.
+                raise RuntimeError(f"Invisia API error {resp.status} for {method} {path}: {data}")
+
+            return data
+
+        # Unreachable – satisfies type checkers.
+        raise RuntimeError(f"Invisia API: retry loop exhausted for {method} {path}")
 
     # ---- RFID ----
     async def get_rfid(self, rfid_id: str):

@@ -18,6 +18,9 @@ BASE_URL = "https://app.invisia.ch"
 # Poll interval (seconds). Coordinator uses its own scheduling; keep as simple int for now.
 SCAN_INTERVAL = 30
 
+# Maximum number of items kept in list-typed entity attributes (journal, timers).
+ATTR_LIST_MAX_ITEMS = 5
+
 # Home Assistant platforms this integration provides.
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
