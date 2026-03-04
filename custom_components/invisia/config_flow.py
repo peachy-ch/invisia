@@ -4,7 +4,9 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .api import InvisiaAPI
 from .const import (
     DOMAIN,
     CONF_EMAIL,
@@ -33,6 +35,28 @@ class InvisiaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None) -> FlowResult:
         if user_input is None:
             return self.async_show_form(step_id="user", data_schema=STEP_USER_DATA_SCHEMA)
+
+        errors: dict[str, str] = {}
+        try:
+            session = async_get_clientsession(self.hass)
+            api = InvisiaAPI(
+                email=user_input[CONF_EMAIL],
+                password=user_input[CONF_PASSWORD],
+                installation_id=user_input[CONF_INSTALLATION_ID],
+                session=session,
+            )
+            await api.login()
+        except RuntimeError:
+            errors["base"] = "invalid_auth"
+        except Exception:  # noqa: BLE001
+            errors["base"] = "cannot_connect"
+
+        if errors:
+            return self.async_show_form(
+                step_id="user",
+                data_schema=STEP_USER_DATA_SCHEMA,
+                errors=errors,
+            )
 
         unique = f"{user_input[CONF_INSTALLATION_ID]}_{user_input[CONF_RFID_ID]}"
         await self.async_set_unique_id(unique)

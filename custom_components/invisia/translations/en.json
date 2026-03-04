@@ -1,7 +1,9 @@
 {
   "config": {
     "error": {
-      "auth_failed": "Login failed"
+      "auth_failed": "Login failed",
+      "invalid_auth": "Invalid credentials – check email and password",
+      "cannot_connect": "Cannot connect to Invisia – check your network and installation ID"
     },
     "step": {
       "user": {
