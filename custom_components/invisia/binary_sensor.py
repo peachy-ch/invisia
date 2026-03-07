@@ -52,7 +52,7 @@ class InvisiaCarPluggedIn(CoordinatorEntity, BinarySensorEntity):
             return cs_l in ('carpluggedin', 'charging')
 
         # Fallback to charging-station detail if present
-        st = (self.coordinator.data or {}).get('charging_station_detail', {}).get('status', {})
+        st = ((self.coordinator.data or {}).get('charging_station_detail') or {}).get('status') or {}
         return bool(st) and bool(st.get('car_plugged_in'))
 
     @property
