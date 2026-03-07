@@ -40,7 +40,7 @@ class InvisiaChargingModeSelect(CoordinatorEntity[InvisiaCoordinator], SelectEnt
         data = self.coordinator.data or {}
         # Prefer charging station status, else RFID profile, else status block
         cs = data.get("charging_station_detail") or {}
-        cs_status = cs.get("status", {}) if isinstance(cs, dict) else {}
+        cs_status = (cs.get("status") or {}) if isinstance(cs, dict) else {}
         mode = cs_status.get("charging_mode")
 
         if not mode:
@@ -59,5 +59,5 @@ class InvisiaChargingModeSelect(CoordinatorEntity[InvisiaCoordinator], SelectEnt
         option = option.lower()
         if option not in OPTIONS:
             return
-        await self.coordinator.api.set_rfid_profile(self.coordinator.ids.rfid_id, option)
+        await self.coordinator.api.set_rfid_profile(self.coordinator.rfid_id, option)
         await self.coordinator.async_request_refresh()
