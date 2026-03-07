@@ -38,15 +38,16 @@ class InvisiaChargingModeSelect(CoordinatorEntity[InvisiaCoordinator], SelectEnt
     @property
     def current_option(self) -> str | None:
         data = self.coordinator.data or {}
-        # Prefer charging station status, else RFID profile, else status block
-        cs = data.get("charging_station_detail") or {}
-        cs_status = (cs.get("status") or {}) if isinstance(cs, dict) else {}
-        mode = cs_status.get("charging_mode")
+        # Prefer the RFID profile (what set_rfid_profile controls), then fall
+        # back to the charging station status and generic status block.
+        _rfid = data.get("rfid")
+        rfid = _rfid if isinstance(_rfid, dict) else {}
+        mode = rfid.get("profile")
 
         if not mode:
-            _rfid = data.get("rfid")
-            rfid = _rfid if isinstance(_rfid, dict) else {}
-            mode = rfid.get("profile")
+            cs = data.get("charging_station_detail") or {}
+            cs_status = (cs.get("status") or {}) if isinstance(cs, dict) else {}
+            mode = cs_status.get("charging_mode")
 
         if not mode:
             status = data.get("status") or {}
