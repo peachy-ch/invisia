@@ -46,7 +46,7 @@ class InvisiaCarPluggedIn(CoordinatorEntity, BinarySensorEntity):
     def is_on(self) -> bool:
         # Prefer RFID status (it actually reports carPluggedIn/charging), because
         # charging-station endpoints often return nulls for this field.
-        cs = (self.coordinator.data or {}).get('status', {}).get('charging_status')
+        cs = ((self.coordinator.data or {}).get('status') or {}).get('charging_status')
         if isinstance(cs, str) and cs:
             cs_l = cs.lower()
             return cs_l in ('carpluggedin', 'charging')
