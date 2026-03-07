@@ -44,7 +44,8 @@ class InvisiaChargingModeSelect(CoordinatorEntity[InvisiaCoordinator], SelectEnt
         mode = cs_status.get("charging_mode")
 
         if not mode:
-            rfid = data.get("rfid") or {}
+            _rfid = data.get("rfid")
+            rfid = _rfid if isinstance(_rfid, dict) else {}
             mode = rfid.get("profile")
 
         if not mode:
