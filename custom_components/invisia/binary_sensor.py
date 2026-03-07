@@ -54,6 +54,7 @@ class InvisiaCarPluggedIn(CoordinatorEntity, BinarySensorEntity):
         # Fallback to charging-station detail if present
         st = (self.coordinator.data or {}).get('charging_station_detail', {}).get('status', {})
         return bool(st) and bool(st.get('car_plugged_in'))
+
     @property
     def extra_state_attributes(self):
         detail = (self.coordinator.data or {}).get("charging_station_detail") or {}

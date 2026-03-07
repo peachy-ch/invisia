@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -102,6 +102,10 @@ class InvisiaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         data: dict[str, Any] = {}
 
+        today = datetime.utcnow().date()
+        start = (today - timedelta(days=30)).isoformat()
+        end = today.isoformat()
+
         # --- Core RFID state (THIS MUST WORK) ---
         try:
             data.update(await self.api.get_rfid(self.ids.rfid_id))
@@ -111,14 +115,23 @@ class InvisiaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # --- Journal (best-effort) ---
         try:
-            data["journal"] = await self.api.get_rfid_journal(self.ids.rfid_id)
+            data["journal"] = await self.api.get_rfid_journal(self.ids.rfid_id, start, end)
         except Exception as err:
             _LOGGER.warning("Invisia get_journal failed (ignored)", exc_info=err)
 
         # --- Stats (broken server-side sometimes; ignore failures) ---
         try:
-            data["stats"] = await self.api.get_rfid_stats(self.ids.rfid_id)
+            data["stats"] = await self.api.get_rfid_stats(self.ids.rfid_id, start, end, "day")
         except Exception as err:
             _LOGGER.warning("Invisia stats fetch failed (ignored)", exc_info=err)
+
+        # --- Charging station detail (best-effort, only if configured) ---
+        if self.ids.charging_station_id is not None:
+            try:
+                data["charging_station_detail"] = await self.api.get_charging_station_detail(
+                    self.ids.charging_station_id
+                )
+            except Exception as err:
+                _LOGGER.warning("Invisia get_charging_station_detail failed (ignored)", exc_info=err)
 
         return data
