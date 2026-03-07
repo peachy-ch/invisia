@@ -125,9 +125,12 @@ class InvisiaSensor(CoordinatorEntity[InvisiaCoordinator], SensorEntity):
 
         attrs: dict[str, Any] = {}
 
-        rfid = data.get("rfid") or {}
-        status = data.get("status") or {}
-        stats = data.get("stats") or {}
+        _rfid = data.get("rfid")
+        rfid = _rfid if isinstance(_rfid, dict) else {}
+        _status = data.get("status")
+        status = _status if isinstance(_status, dict) else {}
+        _stats = data.get("stats")
+        stats = _stats if isinstance(_stats, dict) else {}
 
         # Charging station detail often has richer fields
         cs = data.get("charging_station_detail") or {}

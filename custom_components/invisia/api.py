@@ -157,10 +157,12 @@ class InvisiaAPI:
 
     async def set_rfid_profile(self, rfid_id: str, profile: str):
         # profile: "instant" | "optimized" | "disabled"
+        # allow_non_json=True: PATCH often returns 200/204 with an empty or HTML body.
         return await self._request(
             "PATCH",
             f"/api/cockpit/installations/{self._installation_id}/rfids/{rfid_id}",
             json_body={"id": int(rfid_id), "profile": profile},
+            allow_non_json=True,
         )
 
     async def get_rfid_journal(self, rfid_id: str, start: str, end: str):
