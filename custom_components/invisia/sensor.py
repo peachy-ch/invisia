@@ -89,17 +89,25 @@ class InvisiaSensor(CoordinatorEntity[InvisiaCoordinator], SensorEntity):
         data = self.coordinator.data or {}
         val = _get_path(data, self.entity_description.keypath)
 
-        # Power: Invisia already returns kW (your example: 9.46). So don't multiply.
+        # Power: prefer charging_station_detail.stats (real-time), fall back to stats endpoint
         if self.entity_description.key == "rfid_power":
+            cs = data.get("charging_station_detail") or {}
+            cs_stats = (cs.get("stats") or {}) if isinstance(cs, dict) else {}
+            rt = cs_stats.get("current_power_flow")
+            resolved = rt if rt is not None else val
             try:
-                return float(val) if val is not None else 0.0
+                return float(resolved) if resolved is not None else 0.0
             except (TypeError, ValueError):
                 return 0.0
 
-        # Energy: kWh
+        # Energy: prefer charging_station_detail.stats (real-time), fall back to stats endpoint
         if self.entity_description.key == "rfid_energy_charged":
+            cs = data.get("charging_station_detail") or {}
+            cs_stats = (cs.get("stats") or {}) if isinstance(cs, dict) else {}
+            rt = cs_stats.get("e_charged")
+            resolved = rt if rt is not None else val
             try:
-                return float(val) if val is not None else 0.0
+                return float(resolved) if resolved is not None else 0.0
             except (TypeError, ValueError):
                 return 0.0
 
@@ -110,7 +118,7 @@ class InvisiaSensor(CoordinatorEntity[InvisiaCoordinator], SensorEntity):
         if self.entity_description.key == "rfid_status":
             # Prefer charging station detail status if present
             cs = (data.get("charging_station_detail") or {})
-            cs_status = cs.get("status", {}) if isinstance(cs, dict) else {}
+            cs_status = (cs.get("status") or {}) if isinstance(cs, dict) else {}
             return (cs_status.get("charging_status") or val or "unknown")
 
         return val
@@ -134,8 +142,8 @@ class InvisiaSensor(CoordinatorEntity[InvisiaCoordinator], SensorEntity):
 
         # Charging station detail often has richer fields
         cs = data.get("charging_station_detail") or {}
-        cs_status = cs.get("status", {}) if isinstance(cs, dict) else {}
-        cs_stats = cs.get("stats", {}) if isinstance(cs, dict) else {}
+        cs_status = (cs.get("status") or {}) if isinstance(cs, dict) else {}
+        cs_stats = (cs.get("stats") or {}) if isinstance(cs, dict) else {}
 
         attrs["charging_mode"] = cs_status.get("charging_mode") or status.get("charging_mode") or rfid.get("profile")
         attrs["charging_status"] = cs_status.get("charging_status") or status.get("charging_status")
