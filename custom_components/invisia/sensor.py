@@ -89,25 +89,27 @@ class InvisiaSensor(CoordinatorEntity[InvisiaCoordinator], SensorEntity):
         data = self.coordinator.data or {}
         val = _get_path(data, self.entity_description.keypath)
 
-        # Power: prefer charging_station_detail.stats (real-time), fall back to stats endpoint
+        # Power: get_rfid() already returns real-time stats.current_power_flow.
+        # Only fall back to charging_station_detail if the RFID stats are missing.
         if self.entity_description.key == "rfid_power":
-            cs = data.get("charging_station_detail") or {}
-            cs_stats = (cs.get("stats") or {}) if isinstance(cs, dict) else {}
-            rt = cs_stats.get("current_power_flow")
-            resolved = rt if rt is not None else val
+            if val is None:
+                cs = data.get("charging_station_detail") or {}
+                cs_stats = (cs.get("stats") or {}) if isinstance(cs, dict) else {}
+                val = cs_stats.get("current_power_flow")
             try:
-                return float(resolved) if resolved is not None else 0.0
+                return float(val) if val is not None else 0.0
             except (TypeError, ValueError):
                 return 0.0
 
-        # Energy: prefer charging_station_detail.stats (real-time), fall back to stats endpoint
+        # Energy: get_rfid() already returns real-time stats.e_charged.
+        # Only fall back to charging_station_detail if the RFID stats are missing.
         if self.entity_description.key == "rfid_energy_charged":
-            cs = data.get("charging_station_detail") or {}
-            cs_stats = (cs.get("stats") or {}) if isinstance(cs, dict) else {}
-            rt = cs_stats.get("e_charged")
-            resolved = rt if rt is not None else val
+            if val is None:
+                cs = data.get("charging_station_detail") or {}
+                cs_stats = (cs.get("stats") or {}) if isinstance(cs, dict) else {}
+                val = cs_stats.get("e_charged")
             try:
-                return float(resolved) if resolved is not None else 0.0
+                return float(val) if val is not None else 0.0
             except (TypeError, ValueError):
                 return 0.0
 

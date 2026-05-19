@@ -107,6 +107,9 @@ class InvisiaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         end = today.isoformat()
 
         # --- Core RFID state (THIS MUST WORK) ---
+        # get_rfid() returns real-time stats (current_power_flow, e_charged) in a
+        # "stats" sub-dict.  We must preserve this — the separate get_rfid_stats()
+        # endpoint returns time-series arrays and must NOT overwrite it.
         try:
             data.update(await self.api.get_rfid(self.ids.rfid_id))
         except Exception as err:
@@ -119,9 +122,11 @@ class InvisiaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as err:
             _LOGGER.warning("Invisia get_journal failed (ignored)", exc_info=err)
 
-        # --- Stats (broken server-side sometimes; ignore failures) ---
+        # --- Stats history (time-series, best-effort) ---
+        # Store under "stats_history" so it never clobbers the real-time "stats"
+        # dict from get_rfid().
         try:
-            data["stats"] = await self.api.get_rfid_stats(self.ids.rfid_id, start, end, "day")
+            data["stats_history"] = await self.api.get_rfid_stats(self.ids.rfid_id, start, end, "day")
         except Exception as err:
             _LOGGER.warning("Invisia stats fetch failed (ignored)", exc_info=err)
 
