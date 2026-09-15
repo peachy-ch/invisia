@@ -45,12 +45,16 @@ class InvisiaChargingModeSelect(CoordinatorEntity[InvisiaCoordinator], SelectEnt
         mode = rfid.get("profile")
 
         if not mode:
-            cs = data.get("charging_station_detail") or {}
-            cs_status = (cs.get("status") or {}) if isinstance(cs, dict) else {}
-            mode = cs_status.get("charging_mode")
+            # Every level type-checked: a nested non-dict is truthy, so "or {}"
+            # would let it through and .get() would raise inside the state write.
+            cs = data.get("charging_station_detail")
+            cs_status = cs.get("status") if isinstance(cs, dict) else None
+            if isinstance(cs_status, dict):
+                mode = cs_status.get("charging_mode")
 
         if not mode:
-            status = data.get("status") or {}
+            _status = data.get("status")
+            status = _status if isinstance(_status, dict) else {}
             mode = status.get("charging_mode")
 
         mode = (mode or "").lower()

@@ -172,3 +172,82 @@ async def test_request_returns_data_on_success(api, mock_session):
     result = await api._request("GET", "/api/something")
 
     assert result == {"key": "value"}
+
+
+# ---------------------------------------------------------------------------
+# _request() – error bodies must never be returned as payloads
+# ---------------------------------------------------------------------------
+
+async def test_request_raises_on_non_json_error_body(api, mock_session):
+    """A 404 HTML page used to come back as {"_non_json": True, "status": 404}.
+
+    That sentinel's "status" key shadows the status object every entity reads,
+    so detail["status"].get(...) hit an int and raised inside the state write.
+    """
+    resp = make_response(status=404, text_data="<html>not found</html>", raise_content_type=True)
+    mock_session.request = AsyncMock(return_value=resp)
+
+    with pytest.raises(RuntimeError, match="404"):
+        await api._request("GET", "/api/something", allow_non_json=True)
+
+
+async def test_request_raises_on_5xx_non_json_even_when_allowed(api, mock_session):
+    resp = make_response(status=503, text_data="gateway down", raise_content_type=True)
+    mock_session.request = AsyncMock(return_value=resp)
+
+    with pytest.raises(RuntimeError, match="503"):
+        await api._request("GET", "/api/something", allow_non_json=True)
+
+
+async def test_request_raises_on_4xx_json_list_body(api, mock_session):
+    resp = make_response(status=403, json_data=["forbidden"])
+    mock_session.request = AsyncMock(return_value=resp)
+
+    with pytest.raises(RuntimeError, match="403"):
+        await api._request("GET", "/api/something")
+
+
+async def test_non_json_sentinel_still_returned_for_2xx(api, mock_session):
+    """PATCH replies with an empty/HTML body are normal and must not raise."""
+    resp = make_response(status=204, text_data="", raise_content_type=True)
+    mock_session.request = AsyncMock(return_value=resp)
+
+    result = await api._request("PATCH", "/api/something", allow_non_json=True)
+
+    assert result["_non_json"] is True
+    assert result["status"] == 204
+
+
+# ---------------------------------------------------------------------------
+# get_charging_station_detail() – RFID-only installations
+# ---------------------------------------------------------------------------
+
+async def test_charging_station_detail_empty_404_returns_empty_dict(api, mock_session):
+    resp = make_response(status=404, text_data="", raise_content_type=True)
+    mock_session.request = AsyncMock(return_value=resp)
+
+    assert await api.get_charging_station_detail("99") == {}
+
+
+async def test_charging_station_detail_json_404_returns_empty_dict(api, mock_session):
+    resp = make_response(status=404, json_data={"detail": "not found"})
+    mock_session.request = AsyncMock(return_value=resp)
+
+    assert await api.get_charging_station_detail("99") == {}
+
+
+async def test_charging_station_detail_returns_payload_when_present(api, mock_session):
+    resp = make_response(status=200, json_data={"status": {"car_plugged_in": True}})
+    mock_session.request = AsyncMock(return_value=resp)
+
+    result = await api.get_charging_station_detail("99")
+
+    assert result["status"]["car_plugged_in"] is True
+
+
+async def test_charging_station_detail_500_still_raises(api, mock_session):
+    resp = make_response(status=500, text_data="boom", raise_content_type=True)
+    mock_session.request = AsyncMock(return_value=resp)
+
+    with pytest.raises(RuntimeError, match="500"):
+        await api.get_charging_station_detail("99")

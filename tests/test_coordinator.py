@@ -33,15 +33,22 @@ def ids_with_cs():
 
 async def test_update_success_populates_all_keys(ids_no_cs):
     api = MagicMock()
-    api.get_rfid = AsyncMock(return_value={"rfid": {"profile": "instant"}, "status": {}})
+    api.get_rfid = AsyncMock(return_value={
+        "rfid": {"profile": "instant"},
+        "status": {},
+        "stats": {"current_power_flow": 5.0},
+    })
     api.get_rfid_journal = AsyncMock(return_value=[{"id": 1}])
-    api.get_rfid_stats = AsyncMock(return_value={"current_power_flow": 5.0})
+    api.get_rfid_stats = AsyncMock(return_value=[{"time": "2026-08-16", "flow": None}])
 
     result = await _make_coordinator(api, ids_no_cs)._async_update_data()
 
     assert result["rfid"]["profile"] == "instant"
     assert result["journal"] == [{"id": 1}]
+    # The real-time stats block from get_rfid() must survive, with the time series
+    # stored separately under stats_history (see commit e8d040d).
     assert result["stats"]["current_power_flow"] == 5.0
+    assert result["stats_history"] == [{"time": "2026-08-16", "flow": None}]
     assert "charging_station_detail" not in result
 
 
@@ -103,7 +110,7 @@ async def test_update_stats_failure_ignored(ids_no_cs):
 
     result = await _make_coordinator(api, ids_no_cs)._async_update_data()
 
-    assert "stats" not in result
+    assert "stats_history" not in result
 
 
 async def test_update_charging_station_failure_ignored(ids_with_cs):
@@ -136,3 +143,42 @@ async def test_journal_and_stats_called_with_30_day_window(ids_no_cs):
 
     api.get_rfid_journal.assert_called_once_with(7, start, end)
     api.get_rfid_stats.assert_called_once_with(7, start, end, "day")
+
+
+# ---------------------------------------------------------------------------
+# Payload shape normalisation
+# ---------------------------------------------------------------------------
+
+async def test_wrong_typed_blocks_are_coerced_to_dict(ids_with_cs):
+    """A block that is present but not a dict must not reach the entities verbatim.
+
+    detail["status"].get(...) on an int raises inside async_write_ha_state, which
+    leaves the entity frozen on its last value instead of showing "unknown".
+    """
+    api = MagicMock()
+    api.get_rfid = AsyncMock(return_value={"rfid": None, "stats": 404, "status": "oops"})
+    api.get_rfid_journal = AsyncMock(return_value=[])
+    api.get_rfid_stats = AsyncMock(return_value=[])
+    api.get_charging_station_detail = AsyncMock(return_value=["not", "a", "dict"])
+
+    result = await _make_coordinator(api, ids_with_cs)._async_update_data()
+
+    assert result["rfid"] == {}
+    assert result["stats"] == {}
+    assert result["status"] == {}
+    assert result["charging_station_detail"] == {}
+
+
+async def test_absent_blocks_are_not_invented(ids_no_cs):
+    """Coercion repairs wrong types; it must not add keys the API never sent."""
+    api = MagicMock()
+    api.get_rfid = AsyncMock(return_value={"status": {"charging_status": "charging"}})
+    api.get_rfid_journal = AsyncMock(return_value=[])
+    api.get_rfid_stats = AsyncMock(return_value=[])
+
+    result = await _make_coordinator(api, ids_no_cs)._async_update_data()
+
+    assert result["status"] == {"charging_status": "charging"}
+    assert "rfid" not in result
+    assert "stats" not in result
+    assert "charging_station_detail" not in result
