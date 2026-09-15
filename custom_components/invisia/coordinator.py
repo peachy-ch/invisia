@@ -139,4 +139,15 @@ class InvisiaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except Exception as err:
                 _LOGGER.warning("Invisia get_charging_station_detail failed (ignored)", exc_info=err)
 
+        # Entities index straight into these blocks. Coerce any that are present
+        # but not a dict: a wrong-typed value makes detail["status"].get(...) an
+        # AttributeError, which raises inside async_write_ha_state and leaves the
+        # entity frozen on its last value forever instead of showing "unknown".
+        for key in ("rfid", "stats", "status", "charging_station_detail"):
+            if key in data and not isinstance(data[key], dict):
+                _LOGGER.warning(
+                    "Invisia payload: %s was %s, expected dict", key, type(data[key]).__name__
+                )
+                data[key] = {}
+
         return data

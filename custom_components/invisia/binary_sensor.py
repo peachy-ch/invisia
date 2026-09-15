@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -43,27 +45,48 @@ class InvisiaCarPluggedIn(CoordinatorEntity, BinarySensorEntity):
         )
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         # Prefer RFID status (it actually reports carPluggedIn/charging), because
         # charging-station endpoints often return nulls for this field.
-        cs = ((self.coordinator.data or {}).get('status') or {}).get('charging_status')
-        if isinstance(cs, str) and cs:
-            cs_l = cs.lower()
-            return cs_l in ('carpluggedin', 'charging')
+        data = self.coordinator.data or {}
+
+        status = data.get('status')
+        charging_status = status.get('charging_status') if isinstance(status, dict) else None
+        if isinstance(charging_status, str) and charging_status:
+            return charging_status.lower() in ('carpluggedin', 'charging')
 
         # Fallback to charging-station detail if present
-        st = ((self.coordinator.data or {}).get('charging_station_detail') or {}).get('status') or {}
-        return bool(st) and bool(st.get('car_plugged_in'))
+        detail = data.get('charging_station_detail')
+        st = detail.get('status') if isinstance(detail, dict) else None
+        if isinstance(st, dict) and st.get('car_plugged_in') is not None:
+            return bool(st['car_plugged_in'])
+
+        # Neither source reported anything. Unknown, not a confident "off".
+        return None
 
     @property
     def extra_state_attributes(self):
-        detail = (self.coordinator.data or {}).get("charging_station_detail") or {}
-        status = detail.get("status") or {}
+        data = self.coordinator.data or {}
+
+        detail = data.get("charging_station_detail")
+        cs_status = detail.get("status") if isinstance(detail, dict) else None
+        cs_status = cs_status if isinstance(cs_status, dict) else {}
+
+        # RFID-only installations have no charging station, so the detail block is
+        # empty and every attribute below would be dropped. The RFID status block
+        # carries the same fields for them.
+        _status = data.get("status")
+        status = _status if isinstance(_status, dict) else {}
+
+        def pick(key: str) -> Any:
+            val = cs_status.get(key)
+            return val if val is not None else status.get(key)
+
         return {
-            "charging_status": status.get("charging_status"),
-            "charging_mode": status.get("charging_mode"),
-            "soc": status.get("soc"),
-            "a_max": status.get("a_max"),
-            "ladekabel": status.get("ladekabel"),
-            "ip": status.get("ipadresse"),
+            "charging_status": pick("charging_status"),
+            "charging_mode": pick("charging_mode"),
+            "soc": pick("soc"),
+            "a_max": pick("a_max"),
+            "ladekabel": pick("ladekabel"),
+            "ip": pick("ipadresse"),
         }

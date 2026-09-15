@@ -82,8 +82,14 @@ class InvisiaAPI:
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
         allow_non_json: bool = False,
+        missing_is_empty: bool = False,
     ):
-        """Perform an authenticated request. Optionally tolerate HTML/text bodies."""
+        """Perform an authenticated request. Optionally tolerate HTML/text bodies.
+
+        missing_is_empty treats a 404 as "resource absent" and returns {} instead
+        of raising, for optional endpoints that legitimately do not exist on some
+        accounts (RFID-only installations have no charging stations).
+        """
         if not self._access_token:
             await self.login()
 
@@ -105,6 +111,17 @@ class InvisiaAPI:
                 except ContentTypeError:
                     # Invisia sometimes returns HTML error pages (yes, really).
                     text = await resp.text()
+                    if missing_is_empty and resp.status == 404:
+                        return {}
+                    # An error body must never be handed back as a payload: the
+                    # sentinel below stores the HTTP code under "status", which
+                    # shadows the status object every entity reads from. Callers
+                    # then do detail["status"].get(...) on an int and raise inside
+                    # async_write_ha_state, silently freezing the entity.
+                    if resp.status >= 400:
+                        raise RuntimeError(
+                            f"Invisia API error {resp.status} for {method} {path}: {text[:200]}"
+                        )
                     if allow_non_json:
                         return {"_non_json": True, "status": resp.status, "text": text[:500]}
                     raise RuntimeError(
@@ -136,10 +153,14 @@ class InvisiaAPI:
                     params=params,
                     json_body=json_body,
                     allow_non_json=allow_non_json,
+                    missing_is_empty=missing_is_empty,
                 )
 
-            # Raise for non-2xx if we actually got JSON back with errors
-            if resp.status >= 400 and isinstance(data, dict):
+            # Raise for non-2xx. A JSON *list* body used to slip through here and
+            # be returned to callers as if the request had succeeded.
+            if resp.status >= 400:
+                if missing_is_empty and resp.status == 404:
+                    return {}
                 # Keep it readable in logs.
                 raise RuntimeError(f"Invisia API error {resp.status} for {method} {path}: {data}")
 
@@ -208,10 +229,14 @@ class InvisiaAPI:
         )
 
     async def get_charging_station_detail(self, charging_station_id: str):
+        # RFID-only installations report has_charging_stations=false and this
+        # endpoint 404s with an empty body. That is a steady state, not a fault,
+        # so return {} rather than raising on every 30s poll.
         return await self._request(
             "GET",
             f"/api/cockpit/installations/{self._installation_id}/charging_stations/{charging_station_id}",
             allow_non_json=True,
+            missing_is_empty=True,
         )
 
     # The following endpoints are NOT reliable across accounts/roles.

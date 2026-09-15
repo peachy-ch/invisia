@@ -63,6 +63,22 @@ def _get_path(data: dict[str, Any], path: str) -> Any:
     return cur
 
 
+def _sub_dict(data: Any, *path: str) -> dict[str, Any]:
+    """Walk *path* and return the value only if it really is a dict, else {}.
+
+    Every level is type-checked. The usual `x.get("status") or {}` guard is not
+    enough: the API has been seen to put an HTTP code where a status object
+    belongs, and a truthy non-dict survives that guard before `.get()` raises
+    inside async_write_ha_state — which freezes the entity on its last value.
+    """
+    cur: Any = data
+    for part in path:
+        if not isinstance(cur, dict):
+            return {}
+        cur = cur.get(part)
+    return cur if isinstance(cur, dict) else {}
+
+
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator: InvisiaCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     async_add_entities([InvisiaSensor(coordinator, entry.entry_id, d) for d in SENSORS])
@@ -93,9 +109,7 @@ class InvisiaSensor(CoordinatorEntity[InvisiaCoordinator], SensorEntity):
         # Only fall back to charging_station_detail if the RFID stats are missing.
         if self.entity_description.key == "rfid_power":
             if val is None:
-                cs = data.get("charging_station_detail") or {}
-                cs_stats = (cs.get("stats") or {}) if isinstance(cs, dict) else {}
-                val = cs_stats.get("current_power_flow")
+                val = _sub_dict(data.get("charging_station_detail"), "stats").get("current_power_flow")
             try:
                 return float(val) if val is not None else 0.0
             except (TypeError, ValueError):
@@ -105,9 +119,7 @@ class InvisiaSensor(CoordinatorEntity[InvisiaCoordinator], SensorEntity):
         # Only fall back to charging_station_detail if the RFID stats are missing.
         if self.entity_description.key == "rfid_energy_charged":
             if val is None:
-                cs = data.get("charging_station_detail") or {}
-                cs_stats = (cs.get("stats") or {}) if isinstance(cs, dict) else {}
-                val = cs_stats.get("e_charged")
+                val = _sub_dict(data.get("charging_station_detail"), "stats").get("e_charged")
             try:
                 return float(val) if val is not None else 0.0
             except (TypeError, ValueError):
@@ -119,8 +131,7 @@ class InvisiaSensor(CoordinatorEntity[InvisiaCoordinator], SensorEntity):
 
         if self.entity_description.key == "rfid_status":
             # Prefer charging station detail status if present
-            cs = (data.get("charging_station_detail") or {})
-            cs_status = (cs.get("status") or {}) if isinstance(cs, dict) else {}
+            cs_status = _sub_dict(data.get("charging_station_detail"), "status")
             return (cs_status.get("charging_status") or val or "unknown")
 
         return val
@@ -135,17 +146,14 @@ class InvisiaSensor(CoordinatorEntity[InvisiaCoordinator], SensorEntity):
 
         attrs: dict[str, Any] = {}
 
-        _rfid = data.get("rfid")
-        rfid = _rfid if isinstance(_rfid, dict) else {}
-        _status = data.get("status")
-        status = _status if isinstance(_status, dict) else {}
-        _stats = data.get("stats")
-        stats = _stats if isinstance(_stats, dict) else {}
+        rfid = _sub_dict(data.get("rfid"))
+        status = _sub_dict(data.get("status"))
+        stats = _sub_dict(data.get("stats"))
 
         # Charging station detail often has richer fields
-        cs = data.get("charging_station_detail") or {}
-        cs_status = (cs.get("status") or {}) if isinstance(cs, dict) else {}
-        cs_stats = (cs.get("stats") or {}) if isinstance(cs, dict) else {}
+        cs_detail = data.get("charging_station_detail")
+        cs_status = _sub_dict(cs_detail, "status")
+        cs_stats = _sub_dict(cs_detail, "stats")
 
         attrs["charging_mode"] = cs_status.get("charging_mode") or status.get("charging_mode") or rfid.get("profile")
         attrs["charging_status"] = cs_status.get("charging_status") or status.get("charging_status")
@@ -167,9 +175,9 @@ class InvisiaSensor(CoordinatorEntity[InvisiaCoordinator], SensorEntity):
         if isinstance(t, list):
             attrs["timers"] = t[:ATTR_LIST_MAX_ITEMS]
 
-        # Timestamp
-        meta = data.get("meta") or {}
-        attrs["last_update_utc"] = meta.get("ts")
+        # Timestamp. There is no "meta" block in the payload; the status block
+        # carries the wallbox's own report time.
+        attrs["last_update_utc"] = status.get("time")
 
         # Remove None values to keep it neat
         return {k: v for k, v in attrs.items() if v is not None}
