@@ -21,10 +21,11 @@ The integration is designed to align closely with the Invisia data model while p
 The integration currently provides the following Home Assistant platforms:
 
 ```python
-PLATFORMS = ["sensor", "select"]
+PLATFORMS = [Platform.SENSOR, Platform.SELECT, Platform.BINARY_SENSOR]
 ```
 
-Binary switches have been intentionally removed in favour of a proper multi‑state control model.
+Charging mode is modelled as a **select** entity (a true three‑state control, not a switch), and
+the optional charging station exposes a **binary sensor** for "car plugged in".
 
 ---
 
